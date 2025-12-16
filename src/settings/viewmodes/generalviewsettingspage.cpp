@@ -95,6 +95,19 @@ GeneralViewSettingsPage::GeneralViewSettingsPage(const QUrl &url, QWidget *paren
                                         (mime.globPatterns().join(", "))));
     topLayout->addRow(QString(), m_hideXtrashFiles);
 
+    m_hiddenFilesWhitelistEnabled = new QCheckBox(i18nc("option:check", "Always show whitelisted hidden files"));
+    m_hiddenFilesWhitelistEnabled->setToolTip(i18nc("@info:tooltip",
+                                                    "When enabled, hidden files matching the whitelist patterns below "
+                                                    "will be shown even when hidden files are not being displayed."));
+    topLayout->addRow(QString(), m_hiddenFilesWhitelistEnabled);
+
+    m_hiddenFilesWhitelist = new QLineEdit();
+    m_hiddenFilesWhitelist->setPlaceholderText(i18nc("@info:placeholder", ".github, .gitignore, .env*"));
+    m_hiddenFilesWhitelist->setToolTip(i18nc("@info:tooltip",
+                                             "Comma-separated list of patterns for hidden files to always show. "
+                                             "Supports wildcards: * (any characters), ? (single character), [abc] (character set)."));
+    topLayout->addRow(QString(), m_hiddenFilesWhitelist);
+
     // --------------------- //
     // START double click view background
 
@@ -194,6 +207,9 @@ GeneralViewSettingsPage::GeneralViewSettingsPage(const QUrl &url, QWidget *paren
     connect(m_showSelectionToggle, &QCheckBox::toggled, this, &GeneralViewSettingsPage::changed);
     connect(m_renameInline, &QCheckBox::toggled, this, &GeneralViewSettingsPage::changed);
     connect(m_hideXtrashFiles, &QCheckBox::toggled, this, &GeneralViewSettingsPage::changed);
+    connect(m_hiddenFilesWhitelistEnabled, &QCheckBox::toggled, this, &GeneralViewSettingsPage::changed);
+    connect(m_hiddenFilesWhitelistEnabled, &QCheckBox::toggled, this, &GeneralViewSettingsPage::updateHiddenWhitelistVisibility);
+    connect(m_hiddenFilesWhitelist, &QLineEdit::textChanged, this, &GeneralViewSettingsPage::changed);
     connect(m_dynamicView, &QCheckBox::toggled, this, &GeneralViewSettingsPage::changed);
     connect(m_doubleClickViewCustomAction, &QLineEdit::textChanged, this, &GeneralViewSettingsPage::changed);
     connect(m_doubleClickViewComboBox, qOverload<int>(&QComboBox::currentIndexChanged), this, &GeneralViewSettingsPage::changed);
@@ -216,6 +232,17 @@ void GeneralViewSettingsPage::applySettings()
     settings->setShowSelectionToggle(m_showSelectionToggle->isChecked());
     settings->setRenameInline(m_renameInline->isChecked());
     settings->setHideXTrashFile(m_hideXtrashFiles->isChecked());
+    settings->setHiddenFilesWhitelistEnabled(m_hiddenFilesWhitelistEnabled->isChecked());
+    // Parse comma-separated patterns into a string list
+    const QStringList patterns = m_hiddenFilesWhitelist->text().split(QLatin1Char(','), Qt::SkipEmptyParts);
+    QStringList trimmedPatterns;
+    for (const QString &pattern : patterns) {
+        const QString trimmed = pattern.trimmed();
+        if (!trimmed.isEmpty()) {
+            trimmedPatterns.append(trimmed);
+        }
+    }
+    settings->setHiddenFilesWhitelist(trimmedPatterns);
     settings->setDynamicView(m_dynamicView->isChecked());
     settings->setAutoExpandFolders(m_autoExpandFolders->isChecked());
     settings->setBrowseThroughArchives(m_openArchivesAsFolder->isChecked());
@@ -251,6 +278,9 @@ void GeneralViewSettingsPage::loadSettings()
     m_showSelectionToggle->setChecked(GeneralSettings::showSelectionToggle());
     m_renameInline->setChecked(GeneralSettings::renameInline());
     m_hideXtrashFiles->setChecked(GeneralSettings::hideXTrashFile());
+    m_hiddenFilesWhitelistEnabled->setChecked(GeneralSettings::hiddenFilesWhitelistEnabled());
+    m_hiddenFilesWhitelist->setText(GeneralSettings::hiddenFilesWhitelist().join(QStringLiteral(", ")));
+    updateHiddenWhitelistVisibility(m_hiddenFilesWhitelistEnabled->isChecked());
     m_dynamicView->setChecked(GeneralSettings::dynamicView());
 
     m_localViewProps->setChecked(!useGlobalViewProps);
@@ -266,6 +296,11 @@ void GeneralViewSettingsPage::updateCustomActionVisibility(int doubleClickViewCo
     auto data = m_doubleClickViewComboBox->itemData(doubleClickViewComboBoxCurrentIndex, Qt::UserRole);
     m_doubleClickViewCustomAction->setVisible(data == customCommand);
     m_doubleClickViewCustomActionInfo->setVisible(data == customCommand);
+}
+
+void GeneralViewSettingsPage::updateHiddenWhitelistVisibility(bool enabled)
+{
+    m_hiddenFilesWhitelist->setEnabled(enabled);
 }
 
 #include "moc_generalviewsettingspage.cpp"

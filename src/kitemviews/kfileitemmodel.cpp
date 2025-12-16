@@ -110,6 +110,11 @@ KFileItemModel::KFileItemModel(QObject *parent)
     connect(m_resortAllItemsTimer, &QTimer::timeout, this, &KFileItemModel::resortAllItems);
 
     connect(GeneralSettings::self(), &GeneralSettings::sortingChoiceChanged, this, &KFileItemModel::slotSortingChoiceChanged);
+    connect(GeneralSettings::self(), &GeneralSettings::hiddenFilesWhitelistChanged, this, &KFileItemModel::slotHiddenFilesWhitelistChanged);
+
+    // Initialize hidden files whitelist settings
+    m_filter.setHiddenFilesWhitelistEnabled(GeneralSettings::hiddenFilesWhitelistEnabled());
+    m_filter.setHiddenFilesWhitelist(GeneralSettings::hiddenFilesWhitelist());
 
     setShowTrashMime(m_dirLister->showHiddenFiles() || !GeneralSettings::hideXTrashFile());
 }
@@ -275,17 +280,42 @@ void KFileItemModel::scheduleResortAllItems()
 
 void KFileItemModel::setShowHiddenFiles(bool show)
 {
-    m_dirLister->setShowHiddenFiles(show);
+    const bool whitelistEnabled = GeneralSettings::hiddenFilesWhitelistEnabled();
+    const bool needAllHiddenFiles = whitelistEnabled && !show;
+    const bool newDirListerShowHidden = show || needAllHiddenFiles;
+    const bool oldDirListerShowHidden = m_dirLister->showHiddenFiles();
+
+    // Configure the filter to handle hidden file visibility
+    m_filter.setHiddenFilesShown(show);
+    m_filter.setHiddenFilesWhitelistEnabled(whitelistEnabled);
+    m_filter.setHiddenFilesWhitelist(GeneralSettings::hiddenFilesWhitelist());
+
     setShowTrashMime(show || !GeneralSettings::hideXTrashFile());
-    m_dirLister->emitChanges();
-    if (show) {
-        dispatchPendingItemsToInsert();
+
+    if (oldDirListerShowHidden != newDirListerShowHidden) {
+        // Need to reload directory to fetch/unfetch hidden files from KIO
+        m_dirLister->setShowHiddenFiles(newDirListerShowHidden);
+        const QUrl url = m_dirLister->url();
+        if (url.isValid()) {
+            // Reload all expanded directories first
+            QHashIterator<QUrl, QUrl> expandedDirs(m_expandedDirs);
+            while (expandedDirs.hasNext()) {
+                expandedDirs.next();
+                m_dirLister->openUrl(expandedDirs.value(), KDirLister::Reload);
+            }
+            m_dirLister->openUrl(url, KDirLister::Reload);
+        }
+    } else {
+        // Hidden files already loaded, just re-apply filter
+        applyFilters();
     }
 }
 
 bool KFileItemModel::showHiddenFiles() const
 {
-    return m_dirLister->showHiddenFiles();
+    // Return the logical value (what the user sees), not the KDirLister value
+    // which might be true even when hidden files are disabled due to whitelist
+    return m_filter.hiddenFilesShown();
 }
 
 void KFileItemModel::setShowDirectoriesOnly(bool enabled)
@@ -1485,6 +1515,40 @@ void KFileItemModel::slotSortingChoiceChanged()
 {
     loadSortingSettings();
     resortAllItems();
+}
+
+void KFileItemModel::slotHiddenFilesWhitelistChanged()
+{
+    // Update filter settings from GeneralSettings
+    m_filter.setHiddenFilesWhitelistEnabled(GeneralSettings::hiddenFilesWhitelistEnabled());
+    m_filter.setHiddenFilesWhitelist(GeneralSettings::hiddenFilesWhitelist());
+
+    // Re-apply the current hidden files setting to trigger filtering refresh
+    const bool showHidden = m_filter.hiddenFilesShown();
+    const bool whitelistEnabled = GeneralSettings::hiddenFilesWhitelistEnabled();
+    const bool needAllHiddenFiles = whitelistEnabled && !showHidden;
+
+    // Check if we need to change what files the dir lister fetches
+    const bool dirListerShowHidden = m_dirLister->showHiddenFiles();
+    const bool newDirListerShowHidden = showHidden || needAllHiddenFiles;
+
+    if (dirListerShowHidden != newDirListerShowHidden) {
+        // Need to reload directory to fetch/unfetch hidden files
+        m_dirLister->setShowHiddenFiles(newDirListerShowHidden);
+        const QUrl url = m_dirLister->url();
+        if (url.isValid()) {
+            // Reload all expanded directories first
+            QHashIterator<QUrl, QUrl> expandedDirs(m_expandedDirs);
+            while (expandedDirs.hasNext()) {
+                expandedDirs.next();
+                m_dirLister->openUrl(expandedDirs.value(), KDirLister::Reload);
+            }
+            m_dirLister->openUrl(url, KDirLister::Reload);
+        }
+    } else {
+        // Just re-apply filter without reloading
+        applyFilters();
+    }
 }
 
 void KFileItemModel::dispatchPendingItemsToInsert()

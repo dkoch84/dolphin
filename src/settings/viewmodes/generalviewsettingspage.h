@@ -38,6 +38,7 @@ public:
 private:
     void loadSettings();
     void updateCustomActionVisibility(int doubleClickViewComboBoxCurrentIndex);
+    void updateHiddenWhitelistVisibility(bool enabled);
 
 private:
     QUrl m_url;
@@ -51,6 +52,8 @@ private:
     QCheckBox *m_openArchivesAsFolder = nullptr;
     QCheckBox *m_autoExpandFolders = nullptr;
     QCheckBox *m_hideXtrashFiles = nullptr;
+    QCheckBox *m_hiddenFilesWhitelistEnabled = nullptr;
+    QLineEdit *m_hiddenFilesWhitelist = nullptr;
     QCheckBox *m_dynamicView = nullptr;
     QComboBox *m_doubleClickViewComboBox = nullptr;
     QLineEdit *m_doubleClickViewCustomAction = nullptr;

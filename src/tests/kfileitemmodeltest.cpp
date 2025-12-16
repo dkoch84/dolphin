@@ -16,6 +16,7 @@
 #include <KIO/SimpleJob>
 
 #include "kitemviews/kfileitemmodel.h"
+#include "kitemviews/private/kfileitemmodelfilter.h"
 #include "testdir.h"
 
 void myMessageOutput(QtMsgType type, const QMessageLogContext &context, const QString &msg)
@@ -94,6 +95,8 @@ private Q_SLOTS:
     void testInsertAfterExpand();
     void testCurrentDirRemoved();
     void testSizeSortingAfterRefresh();
+    void testHiddenFilesWhitelist();
+    void testHiddenFilesWhitelistWithWildcards();
 
 private:
     QStringList itemsInModel() const;
@@ -2716,6 +2719,130 @@ QStringList KFileItemModelTest::itemsInModel() const
         items << m_model->fileItem(i).text();
     }
     return items;
+}
+
+/**
+ * Test that the hidden files whitelist correctly shows whitelisted hidden files
+ * while hiding other hidden files.
+ */
+void KFileItemModelTest::testHiddenFilesWhitelist()
+{
+    // Test KFileItemModelFilter directly
+    KFileItemModelFilter filter;
+
+    // Create test KFileItems
+    KFileItem hiddenGithub(QUrl::fromLocalFile("/test/.github"), QString(), KFileItem::Unknown);
+    KFileItem hiddenGit(QUrl::fromLocalFile("/test/.git"), QString(), KFileItem::Unknown);
+    KFileItem hiddenBashrc(QUrl::fromLocalFile("/test/.bashrc"), QString(), KFileItem::Unknown);
+    KFileItem normalFile(QUrl::fromLocalFile("/test/readme.txt"), QString(), KFileItem::Unknown);
+
+    // By default, hidden files are shown (m_hiddenFilesShown = true)
+    QVERIFY(filter.matches(hiddenGithub));
+    QVERIFY(filter.matches(hiddenGit));
+    QVERIFY(filter.matches(hiddenBashrc));
+    QVERIFY(filter.matches(normalFile));
+
+    // Hide hidden files
+    filter.setHiddenFilesShown(false);
+
+    // Without whitelist enabled, all hidden files should be filtered
+    QVERIFY(!filter.matches(hiddenGithub));
+    QVERIFY(!filter.matches(hiddenGit));
+    QVERIFY(!filter.matches(hiddenBashrc));
+    QVERIFY(filter.matches(normalFile)); // Normal files still shown
+
+    // Enable whitelist with .github pattern
+    filter.setHiddenFilesWhitelistEnabled(true);
+    filter.setHiddenFilesWhitelist(QStringList() << ".github");
+
+    // Now .github should be shown, but other hidden files should still be hidden
+    QVERIFY(filter.matches(hiddenGithub));
+    QVERIFY(!filter.matches(hiddenGit));
+    QVERIFY(!filter.matches(hiddenBashrc));
+    QVERIFY(filter.matches(normalFile));
+
+    // Add more patterns to whitelist
+    filter.setHiddenFilesWhitelist(QStringList() << ".github" << ".bashrc");
+    QVERIFY(filter.matches(hiddenGithub));
+    QVERIFY(!filter.matches(hiddenGit));
+    QVERIFY(filter.matches(hiddenBashrc));
+    QVERIFY(filter.matches(normalFile));
+
+    // Disable whitelist - all hidden files should be hidden again
+    filter.setHiddenFilesWhitelistEnabled(false);
+    QVERIFY(!filter.matches(hiddenGithub));
+    QVERIFY(!filter.matches(hiddenGit));
+    QVERIFY(!filter.matches(hiddenBashrc));
+    QVERIFY(filter.matches(normalFile));
+
+    // Re-enable showing all hidden files
+    filter.setHiddenFilesShown(true);
+    QVERIFY(filter.matches(hiddenGithub));
+    QVERIFY(filter.matches(hiddenGit));
+    QVERIFY(filter.matches(hiddenBashrc));
+    QVERIFY(filter.matches(normalFile));
+}
+
+/**
+ * Test that wildcard patterns work correctly in the hidden files whitelist.
+ */
+void KFileItemModelTest::testHiddenFilesWhitelistWithWildcards()
+{
+    KFileItemModelFilter filter;
+
+    // Create test KFileItems
+    KFileItem hiddenGithub(QUrl::fromLocalFile("/test/.github"), QString(), KFileItem::Unknown);
+    KFileItem hiddenGitignore(QUrl::fromLocalFile("/test/.gitignore"), QString(), KFileItem::Unknown);
+    KFileItem hiddenGitmodules(QUrl::fromLocalFile("/test/.gitmodules"), QString(), KFileItem::Unknown);
+    KFileItem hiddenGit(QUrl::fromLocalFile("/test/.git"), QString(), KFileItem::Unknown);
+    KFileItem hiddenEnv(QUrl::fromLocalFile("/test/.env"), QString(), KFileItem::Unknown);
+    KFileItem hiddenEnvLocal(QUrl::fromLocalFile("/test/.env.local"), QString(), KFileItem::Unknown);
+    KFileItem hiddenBashrc(QUrl::fromLocalFile("/test/.bashrc"), QString(), KFileItem::Unknown);
+    KFileItem hiddenZshrc(QUrl::fromLocalFile("/test/.zshrc"), QString(), KFileItem::Unknown);
+
+    // Hide hidden files and enable whitelist
+    filter.setHiddenFilesShown(false);
+    filter.setHiddenFilesWhitelistEnabled(true);
+
+    // Test .git* wildcard pattern - should match .github, .gitignore, .gitmodules, .git
+    filter.setHiddenFilesWhitelist(QStringList() << ".git*");
+    QVERIFY(filter.matches(hiddenGithub));
+    QVERIFY(filter.matches(hiddenGitignore));
+    QVERIFY(filter.matches(hiddenGitmodules));
+    QVERIFY(filter.matches(hiddenGit));
+    QVERIFY(!filter.matches(hiddenEnv));
+    QVERIFY(!filter.matches(hiddenBashrc));
+
+    // Test .env* wildcard pattern
+    filter.setHiddenFilesWhitelist(QStringList() << ".env*");
+    QVERIFY(!filter.matches(hiddenGithub));
+    QVERIFY(filter.matches(hiddenEnv));
+    QVERIFY(filter.matches(hiddenEnvLocal));
+    QVERIFY(!filter.matches(hiddenBashrc));
+
+    // Test .*rc wildcard pattern - should match .bashrc, .zshrc
+    filter.setHiddenFilesWhitelist(QStringList() << ".*rc");
+    QVERIFY(!filter.matches(hiddenGithub));
+    QVERIFY(!filter.matches(hiddenEnv));
+    QVERIFY(filter.matches(hiddenBashrc));
+    QVERIFY(filter.matches(hiddenZshrc));
+
+    // Test multiple patterns with wildcards
+    filter.setHiddenFilesWhitelist(QStringList() << ".git*" << ".env*");
+    QVERIFY(filter.matches(hiddenGithub));
+    QVERIFY(filter.matches(hiddenGitignore));
+    QVERIFY(filter.matches(hiddenGit));
+    QVERIFY(filter.matches(hiddenEnv));
+    QVERIFY(filter.matches(hiddenEnvLocal));
+    QVERIFY(!filter.matches(hiddenBashrc));
+    QVERIFY(!filter.matches(hiddenZshrc));
+
+    // Test ? single character wildcard
+    filter.setHiddenFilesWhitelist(QStringList() << ".???");
+    QVERIFY(!filter.matches(hiddenGithub)); // 7 chars after dot
+    QVERIFY(filter.matches(hiddenGit)); // 3 chars after dot
+    QVERIFY(filter.matches(hiddenEnv)); // 3 chars after dot
+    QVERIFY(!filter.matches(hiddenBashrc)); // 6 chars after dot
 }
 
 QTEST_MAIN(KFileItemModelTest)

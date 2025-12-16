@@ -10,6 +10,7 @@
     <kcfgfile name="dolphinrc"/>
     <signal name="sortingChoiceChanged" />
     <signal name="splitViewChanged" />
+    <signal name="hiddenFilesWhitelistChanged" />
     <signal name="showStatusBarChanged">
         <argument type="Bool">showStatusBar</argument>
     </signal>
@@ -157,6 +158,16 @@
         <entry name="HideXTrashFile" type="Bool">
             <label>Also hide files with application/x-trash mimetype</label>
             <default>false</default>
+        </entry>
+        <entry name="HiddenFilesWhitelistEnabled" type="Bool">
+            <label>Enable whitelist for always-visible hidden files</label>
+            <default>false</default>
+            <emit signal="hiddenFilesWhitelistChanged" />
+        </entry>
+        <entry name="HiddenFilesWhitelist" type="StringList">
+            <label>Patterns for hidden files to always show</label>
+            <default>.github,.gitignore</default>
+            <emit signal="hiddenFilesWhitelistChanged" />
         </entry>
         <entry name="DynamicView" type="Bool">
             <label>Enable dynamic view</label>

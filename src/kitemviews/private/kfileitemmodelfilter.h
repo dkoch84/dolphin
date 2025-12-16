@@ -52,7 +52,30 @@ public:
     QStringList excludeMimeTypes() const;
 
     /**
-     * @return True if either the pattern or mimetype filters has been set.
+     * Sets whether hidden files should be visible. When false, hidden files
+     * will be filtered out unless they match the whitelist patterns.
+     */
+    void setHiddenFilesShown(bool shown);
+    bool hiddenFilesShown() const;
+
+    /**
+     * Sets whether the hidden files whitelist is enabled. When enabled,
+     * hidden files matching whitelist patterns will be shown even when
+     * hidden files are not being shown.
+     */
+    void setHiddenFilesWhitelistEnabled(bool enabled);
+    bool hiddenFilesWhitelistEnabled() const;
+
+    /**
+     * Sets the list of patterns for hidden files that should always be shown.
+     * Patterns support wildcards (*, ?, [).
+     */
+    void setHiddenFilesWhitelist(const QStringList &patterns);
+    QStringList hiddenFilesWhitelist() const;
+
+    /**
+     * @return True if either the pattern or mimetype filters has been set,
+     *         or if hidden files filtering is active.
      */
     bool hasSetFilters() const;
 
@@ -73,6 +96,16 @@ private:
      */
     bool matchesType(const KFileItem &item) const;
 
+    /**
+     * @return True if the hidden item matches any of the whitelist patterns.
+     */
+    bool matchesHiddenWhitelist(const KFileItem &item) const;
+
+    /**
+     * Updates the compiled regular expressions for the whitelist patterns.
+     */
+    void updateHiddenWhitelistRegExps();
+
     bool m_useRegExp; // If true, m_regExp is used for filtering,
                       // otherwise m_lowerCaseFilter is used.
     QRegularExpression *m_regExp;
@@ -81,5 +114,10 @@ private:
     QString m_pattern; // Property set by setPattern().
     QStringList m_mimeTypes; // Property set by setMimeTypes()
     QStringList m_excludeMimeTypes; // Property set by setExcludeMimeTypes()
+
+    bool m_hiddenFilesShown; // Whether hidden files should be visible
+    bool m_hiddenWhitelistEnabled; // Whether whitelist is active
+    QStringList m_hiddenWhitelist; // Patterns for always-visible hidden files
+    QList<QRegularExpression> m_hiddenWhitelistRegExps; // Compiled patterns
 };
 #endif

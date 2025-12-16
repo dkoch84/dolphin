@@ -302,6 +302,7 @@ private Q_SLOTS:
     void slotRefreshItems(const QList<QPair<KFileItem, KFileItem>> &items);
     void slotClear();
     void slotSortingChoiceChanged();
+    void slotHiddenFilesWhitelistChanged();
     void slotListerError(KIO::Job *job);
 
     void dispatchPendingItemsToInsert();
