@@ -28,6 +28,9 @@
 #include "panels/terminal/terminalpanel.h"
 #include "search/dolphinquery.h"
 #include "selectionmode/actiontexthelper.h"
+#if KIO_VERSION >= QT_VERSION_CHECK(6, 24, 0)
+#include "servicemenushortcutmanager.h"
+#endif
 #include "settings/dolphinsettingsdialog.h"
 #include "statusbar/diskspaceusagemenu.h"
 #include "statusbar/dolphinstatusbar.h"
@@ -189,22 +192,27 @@ DolphinMainWindow::DolphinMainWindow()
     connect(m_actionHandler, &DolphinViewActionHandler::selectionModeChangeTriggered, this, &DolphinMainWindow::slotSetSelectionMode);
 
     QAction *newDirAction = actionCollection()->action(QStringLiteral("create_dir"));
-    Q_CHECK_PTR(newDirAction);
+    Q_ASSERT(newDirAction);
     m_newFileMenu->setNewFolderShortcutAction(newDirAction);
 
     QAction *newFileAction = actionCollection()->action(QStringLiteral("create_file"));
-    Q_CHECK_PTR(newFileAction);
+    Q_ASSERT(newFileAction);
     m_newFileMenu->setNewFileShortcutAction(newFileAction);
 
     m_remoteEncoding = new DolphinRemoteEncoding(this, m_actionHandler);
     connect(this, &DolphinMainWindow::urlChanged, m_remoteEncoding, &DolphinRemoteEncoding::slotAboutToOpenUrl);
 
     m_disabledActionNotifier = new DisabledActionNotifier(this);
-    connect(m_disabledActionNotifier, &DisabledActionNotifier::disabledActionTriggered, this, [this](const QAction *, QString reason) {
+    connect(m_disabledActionNotifier, &DisabledActionNotifier::disabledActionTriggered, this, [this](const QAction *, const QString &reason) {
         m_activeViewContainer->showMessage(reason, KMessageWidget::Warning);
     });
 
     setupDockWidgets();
+
+#if KIO_VERSION >= QT_VERSION_CHECK(6, 24, 0)
+    m_serviceMenuShortcutManager = new ServiceMenuShortcutManager(actionCollection(), this);
+#endif
+    setupFileItemActions();
 
     const bool usePhoneUi{KRuntimePlatform::runtimePlatform().contains(QLatin1String("phone"))};
     setupGUI(Save | Create | ToolBar, usePhoneUi ? QStringLiteral("dolphinuiforphones.rc") : QString() /* load the default dolphinui.rc file */);
@@ -256,12 +264,12 @@ DolphinMainWindow::DolphinMainWindow()
 
     QTimer::singleShot(0, this, &DolphinMainWindow::updateOpenPreferredSearchToolAction);
 
-    m_fileItemActions.setParentWidget(this);
-    connect(&m_fileItemActions, &KFileItemActions::error, this, [this](const QString &errorMessage) {
-        showErrorMessage(errorMessage);
+    m_serviceMenuConfigWatcher = KConfigWatcher::create(KSharedConfig::openConfig(QStringLiteral("kservicemenurc")));
+    connect(m_serviceMenuConfigWatcher.data(), &KConfigWatcher::configChanged, this, [this](const KConfigGroup & /*group*/, const QByteArrayList & /*names*/) {
+        setupFileItemActions();
     });
-
     connect(GeneralSettings::self(), &GeneralSettings::splitViewChanged, this, &DolphinMainWindow::slotSplitViewChanged);
+    connect(GeneralSettings::self(), &GeneralSettings::tabBarChanged, this, &DolphinMainWindow::slotTabBarChanged);
 }
 
 DolphinMainWindow::~DolphinMainWindow()
@@ -270,7 +278,7 @@ DolphinMainWindow::~DolphinMainWindow()
     disconnect(QGuiApplication::clipboard(), &QClipboard::dataChanged, this, &DolphinMainWindow::updatePasteAction);
 
     // This fixes a crash in dolphinmainwindowtest where the connection below fires even though the KMainWindow destructor of this object is already running.
-    Q_CHECK_PTR(qobject_cast<DolphinDockWidget *>(m_placesPanel->parent()));
+    Q_ASSERT(qobject_cast<DolphinDockWidget *>(m_placesPanel->parent()));
     disconnect(static_cast<DolphinDockWidget *>(m_placesPanel->parent()),
                &DolphinDockWidget::visibilityChanged,
                this,
@@ -429,6 +437,10 @@ void DolphinMainWindow::slotSelectionChanged(const KFileItemList &selection)
 {
     updateFileAndEditActions();
 
+    if (m_fileItemActions) {
+        m_fileItemActions->setItemListProperties(KFileItemListProperties(selection));
+    }
+
     const int selectedUrlsCount = m_tabWidget->currentTabPage()->selectedItemsCount();
 
     QAction *compareFilesAction = actionCollection()->action(QStringLiteral("compare_files"));
@@ -525,6 +537,12 @@ void DolphinMainWindow::slotSplitViewChanged()
 {
     m_tabWidget->currentTabPage()->setSplitViewEnabled(GeneralSettings::splitView(), WithAnimation);
     updateSplitActions();
+}
+
+void DolphinMainWindow::slotTabBarChanged()
+{
+    m_tabWidget->setTabBarAutoHide(!GeneralSettings::alwaysShowTabBar());
+    m_tabWidget->tabBar()->setTabsClosable(GeneralSettings::showCloseButtonOnTabs());
 }
 
 void DolphinMainWindow::openInNewTab()
@@ -1541,7 +1559,7 @@ void DolphinMainWindow::slotWriteStateChanged(bool isFolderWritable)
 
 void DolphinMainWindow::openContextMenu(const QPoint &pos, const KFileItem &item, const KFileItemList &selectedItems, const QUrl &url)
 {
-    QPointer<DolphinContextMenu> contextMenu = new DolphinContextMenu(this, item, selectedItems, url, &m_fileItemActions);
+    QPointer<DolphinContextMenu> contextMenu = new DolphinContextMenu(this, item, selectedItems, url, m_fileItemActions);
     contextMenu->exec(pos);
 
     // Delete the menu, unless it has been deleted in its own nested event loop already.
@@ -1775,6 +1793,10 @@ void DolphinMainWindow::slotStorageTearDownExternallyRequested(const QString &mo
 
 void DolphinMainWindow::slotKeyBindings()
 {
+#if KIO_VERSION >= QT_VERSION_CHECK(6, 24, 0)
+    m_serviceMenuShortcutManager->cleanupStaleShortcuts(this);
+#endif
+
     KShortcutsDialog dialog(KShortcutsEditor::AllActions, KShortcutsEditor::LetterShortcutsAllowed, this);
     dialog.addCollection(actionCollection());
     if (m_terminalPanel) {
@@ -1813,6 +1835,9 @@ void DolphinMainWindow::setupActions()
     menu->setIcon(QIcon::fromTheme(QStringLiteral("list-add")));
     m_newFileMenu->setPopupMode(QToolButton::InstantPopup);
     connect(menu, &QMenu::aboutToShow, this, &DolphinMainWindow::updateNewMenu);
+    connect(m_newFileMenu, &KNewFileMenu::directoryCreated, this, [this](const QUrl &createdDirectory) {
+        activeViewContainer()->view()->expandToUrl(createdDirectory);
+    });
 
     QAction *newWindow = KStandardAction::openNew(this, &DolphinMainWindow::openNewMainWindow, actionCollection());
     newWindow->setText(i18nc("@action:inmenu File", "New &Window"));
@@ -2487,6 +2512,17 @@ void DolphinMainWindow::setupDockWidgets()
         focusTerminalPanel->setIcon(QIcon::fromTheme(QStringLiteral("swap-panels")));
         actionCollection()->setDefaultShortcut(focusTerminalPanel, Qt::CTRL | Qt::SHIFT | Qt::Key_F4);
         connect(focusTerminalPanel, &QAction::triggered, this, &DolphinMainWindow::toggleTerminalPanelFocus);
+
+        QAction *switchTerminalUrlSync = actionCollection()->addAction(QStringLiteral("switch_terminal_url_sync"));
+        switchTerminalUrlSync->setText(i18nc("@action:inmenu", "Follow Directory Switch"));
+        switchTerminalUrlSync->setToolTip(
+            i18nc("@info:tooltip", "Determines if current working directory must be kept in sync with terminal whenever directory is changed."));
+        switchTerminalUrlSync->setCheckable(true);
+        connect(switchTerminalUrlSync, &QAction::toggled, m_terminalPanel, &TerminalPanel::switchSync);
+        switchTerminalUrlSync->setChecked(true);
+
+        m_terminalPanel->setSwitchTerminalUrlSyncAction(switchTerminalUrlSync);
+
     } // endif "shell_access" allowed
 #endif // HAVE_TERMINAL
 
@@ -2589,6 +2625,23 @@ void DolphinMainWindow::setupDockWidgets()
     connect(panelsMenu->menu(), &QMenu::aboutToShow, this, [actionShowAllPlaces] {
         actionShowAllPlaces->setEnabled(DolphinPlacesModelSingleton::instance().placesModel()->hiddenCount());
     });
+}
+
+void DolphinMainWindow::setupFileItemActions()
+{
+    if (m_fileItemActions) {
+        delete m_fileItemActions;
+    }
+
+    m_fileItemActions = new KFileItemActions(this);
+    m_fileItemActions->setParentWidget(this);
+    connect(m_fileItemActions, &KFileItemActions::error, this, [this](const QString &errorMessage) {
+        showErrorMessage(errorMessage);
+    });
+
+#if KIO_VERSION >= QT_VERSION_CHECK(6, 24, 0)
+    m_serviceMenuShortcutManager->refresh(m_fileItemActions);
+#endif
 }
 
 void DolphinMainWindow::updateFileAndEditActions()
@@ -2743,6 +2796,7 @@ void DolphinMainWindow::updateGoActions()
 
 void DolphinMainWindow::refreshViews()
 {
+    setupFileItemActions();
     m_tabWidget->refreshViews();
 
     if (GeneralSettings::modifiedStartupSettings()) {
@@ -3147,9 +3201,7 @@ DolphinMainWindow::UndoUiInterface::UndoUiInterface()
 {
 }
 
-DolphinMainWindow::UndoUiInterface::~UndoUiInterface()
-{
-}
+DolphinMainWindow::UndoUiInterface::~UndoUiInterface() = default;
 
 void DolphinMainWindow::UndoUiInterface::jobError(KIO::Job *job)
 {

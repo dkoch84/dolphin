@@ -225,7 +225,10 @@ void DolphinContextMenu::addDirectoryItemContextMenu()
     newFileMenu->setEnabled(selectedItemsProps.supportsWriting());
     connect(newFileMenu, &DolphinNewFileMenu::fileCreated, newFileMenu, &DolphinNewFileMenu::deleteLater);
     connect(newFileMenu, &DolphinNewFileMenu::fileCreationRejected, newFileMenu, &DolphinNewFileMenu::deleteLater);
-    connect(newFileMenu, &DolphinNewFileMenu::directoryCreated, newFileMenu, &DolphinNewFileMenu::deleteLater);
+    connect(newFileMenu, &DolphinNewFileMenu::directoryCreated, newFileMenu, [newFileMenu, mainWindow = m_mainWindow](const QUrl &newDirectory) {
+        mainWindow->activeViewContainer()->view()->expandToUrl(newDirectory);
+        newFileMenu->deleteLater();
+    });
     connect(newFileMenu, &DolphinNewFileMenu::directoryCreationRejected, newFileMenu, &DolphinNewFileMenu::deleteLater);
 
     QMenu *menu = newFileMenu->menu();
@@ -264,8 +267,6 @@ void DolphinContextMenu::addItemContextMenu()
     Q_ASSERT(!m_fileInfo.isNull());
 
     const KFileItemListProperties &selectedItemsProps = selectedItemsProperties();
-
-    m_fileItemActions->setItemListProperties(selectedItemsProps);
 
     if (m_selectedItems.count() == 1) {
         // single files

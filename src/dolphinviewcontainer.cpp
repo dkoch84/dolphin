@@ -210,9 +210,7 @@ DolphinViewContainer::DolphinViewContainer(const QUrl &url, QWidget *parent)
     QApplication::instance()->installEventFilter(this);
 }
 
-DolphinViewContainer::~DolphinViewContainer()
-{
-}
+DolphinViewContainer::~DolphinViewContainer() = default;
 
 QUrl DolphinViewContainer::url() const
 {
@@ -284,10 +282,10 @@ DolphinView *DolphinViewContainer::view()
 
 void DolphinViewContainer::connectUrlNavigator(DolphinUrlNavigator *urlNavigator)
 {
-    Q_CHECK_PTR(urlNavigator);
+    Q_ASSERT(urlNavigator);
     Q_ASSERT(!m_urlNavigatorConnected);
     Q_ASSERT(m_urlNavigator.get() != urlNavigator);
-    Q_CHECK_PTR(m_view);
+    Q_ASSERT(m_view);
 
     urlNavigator->setLocationUrl(m_view->url());
     urlNavigator->setShowHiddenFolders(m_view->hiddenFilesShown());
@@ -413,8 +411,8 @@ void DolphinViewContainer::setSelectionModeEnabled(bool enabled, KActionCollecti
         if (!wasEnabled) {
             return; // nothing to do here
         }
-        Q_CHECK_PTR(m_selectionModeTopBar); // there is no point in disabling selectionMode when it wasn't even enabled once.
-        Q_CHECK_PTR(m_selectionModeBottomBar);
+        Q_ASSERT(m_selectionModeTopBar); // there is no point in disabling selectionMode when it wasn't even enabled once.
+        Q_ASSERT(m_selectionModeBottomBar);
         m_selectionModeTopBar->setVisible(false, WithAnimation);
         m_selectionModeBottomBar->setVisible(false, WithAnimation);
         Q_EMIT selectionModeChanged(false);
@@ -793,12 +791,12 @@ void DolphinViewContainer::slotfileMiddleClickActivated(const KFileItem &item)
 
         // in case KIO::WidgetsOpenOrExecuteFileHandler::promptUserOpenOrExecute would not open the file
         if (value != QLatin1String("open")) {
-            indexOfAppToOpenFileWith = 0;
+            --indexOfAppToOpenFileWith;
         }
     }
 
     if (services.length() >= indexOfAppToOpenFileWith + 1) {
-        auto service = services.at(indexOfAppToOpenFileWith);
+        const auto &service = services.at(indexOfAppToOpenFileWith);
 
         KIO::ApplicationLauncherJob *job = new KIO::ApplicationLauncherJob(service, this);
         job->setUrls({item.targetUrl()});

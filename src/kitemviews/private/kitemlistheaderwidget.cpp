@@ -18,7 +18,7 @@ namespace
 /**
  * @returns a list which has a reversed order of elements compared to @a list.
  */
-QList<QByteArray> reversed(const QList<QByteArray> list)
+QList<QByteArray> reversed(const QList<QByteArray> &list)
 {
     QList<QByteArray> reversedList;
     for (auto i = list.rbegin(); i != list.rend(); i++) {
@@ -63,9 +63,7 @@ KItemListHeaderWidget::KItemListHeaderWidget(QGraphicsWidget *parent)
     setFont(QApplication::font("QHeaderView"));
 }
 
-KItemListHeaderWidget::~KItemListHeaderWidget()
-{
-}
+KItemListHeaderWidget::~KItemListHeaderWidget() = default;
 
 void KItemListHeaderWidget::setModel(KItemModelBase *model)
 {

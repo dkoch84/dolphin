@@ -349,6 +349,10 @@ private:
         OriginUrlRole,
         AspectRatioRole,
         FrameRateRole,
+        AudioCodecRole,
+        VideoCodecRole,
+        PixelFormatRole,
+        ColorSpaceRole,
         // Non-visible roles:
         IsDirRole,
         IsLinkRole,

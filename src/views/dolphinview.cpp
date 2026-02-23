@@ -36,11 +36,12 @@
 #include <KDesktopFile>
 #include <KDirModel>
 #include <KFileItemListProperties>
+#include <KFilePlacesView>
 #include <KFormat>
 #include <KIO/CopyJob>
 #include <KIO/DeleteOrTrashJob>
 #include <KIO/DropJob>
-#include <KIO/JobUiDelegate>
+#include <KIO/JobUiDelegateFactory>
 #include <KIO/Paste>
 #include <KIO/PasteJob>
 #include <KIO/RenameFileDialog>
@@ -560,7 +561,7 @@ bool DolphinView::sortHiddenLast() const
 
 void DolphinView::setVisibleRoles(const QList<QByteArray> &roles)
 {
-    const QList<QByteArray> previousRoles = roles;
+    const QList<QByteArray> &previousRoles = roles;
 
     ViewProperties props(viewPropertiesUrl());
     props.setVisibleRoles(roles);
@@ -819,6 +820,8 @@ void DolphinView::trashSelectedItems()
 
     using Iface = KIO::AskUserActionInterface;
     auto *trashJob = new KIO::DeleteOrTrashJob(list, Iface::Trash, Iface::DefaultConfirmation, this);
+    // Auto*Warning*Handling, errors are put in a KMessageWidget by us in slotTrashFileFinished.
+    trashJob->setUiDelegate(KIO::createDefaultJobUiDelegate(KJobUiDelegate::AutoWarningHandlingEnabled, this));
     connect(trashJob, &KJob::result, this, &DolphinView::slotTrashFileFinished);
     m_selectNextItem = true;
     trashJob->start();
@@ -830,6 +833,8 @@ void DolphinView::deleteSelectedItems()
 
     using Iface = KIO::AskUserActionInterface;
     auto *trashJob = new KIO::DeleteOrTrashJob(list, Iface::Delete, Iface::DefaultConfirmation, this);
+    // Auto*Warning*Handling, errors are put in a KMessageWidget by us in slotDeleteFileFinished.
+    trashJob->setUiDelegate(KIO::createDefaultJobUiDelegate(KJobUiDelegate::AutoWarningHandlingEnabled, this));
     connect(trashJob, &KJob::result, this, &DolphinView::slotDeleteFileFinished);
     m_selectNextItem = true;
     trashJob->start();
@@ -1404,7 +1409,7 @@ void DolphinView::slotItemDropEvent(int index, QGraphicsSceneDragDropEvent *even
 {
     QUrl destUrl;
     KFileItem destItem = m_model->fileItem(index);
-    if (destItem.isNull() || (!destItem.isDir() && !destItem.isDesktopFile())) {
+    if (destItem.isNull() || (!destItem.isDir() && !destItem.isDesktopFile() && !destItem.isExecutable())) {
         // Use the URL of the view as drop target if the item is no directory
         // or desktop-file
         destItem = m_model->rootItem();
@@ -1422,7 +1427,16 @@ void DolphinView::slotItemDropEvent(int index, QGraphicsSceneDragDropEvent *even
 
 void DolphinView::dropUrls(const QUrl &destUrl, QDropEvent *dropEvent, QWidget *dropWidget)
 {
-    KIO::DropJob *job = DragAndDropHelper::dropUrls(destUrl, dropEvent, dropWidget);
+    KIO::DropJobFlags dropjobFlags;
+#if KIO_VERSION >= QT_VERSION_CHECK(6, 23, 0)
+    if (qobject_cast<KFilePlacesView *>(dropEvent->source())) {
+        // this drop comes from Places View so we want to avoid
+        // potentially destructive Move-like plugins actions
+        dropjobFlags |= KIO::DropJobFlag::ExcludePluginsActions;
+    }
+#endif
+
+    KIO::DropJob *job = DragAndDropHelper::dropUrls(destUrl, dropEvent, dropWidget, dropjobFlags);
 
     if (job) {
         connect(job, &KIO::DropJob::result, this, &DolphinView::slotJobResult);
@@ -1790,7 +1804,7 @@ void DolphinView::resetZoomLevel()
     setZoomLevel(ZoomLevelInfo::zoomLevelForIconSize(QSize(userDefaultIconSize, userDefaultIconSize)));
 }
 
-void DolphinView::selectFileOnceAvailable(const QUrl &url, std::function<bool()> condition)
+void DolphinView::selectFileOnceAvailable(const QUrl &url, const std::function<bool()> &condition)
 {
     // need to wait for the item to be added to the model
     QMetaObject::Connection *connection = new QMetaObject::Connection;
@@ -1835,6 +1849,11 @@ void DolphinView::observeCreatedDirectory(const QUrl &newDirectoryUrl)
         return;
     }
 
+    if (!m_url.isParentOf(newDirectoryUrl)) {
+        // the view has moved
+        return;
+    }
+
     // since this is async make sure the selection state hasn't change in the meantime
     std::function<bool()> condition([this]() {
         return !m_container->controller()->selectionManager()->hasSelection();
@@ -1843,7 +1862,8 @@ void DolphinView::observeCreatedDirectory(const QUrl &newDirectoryUrl)
     // in case, a new hiercachy was created, select the first folder in its parent path
     auto targetUrl = newDirectoryUrl;
     auto parentUrl = targetUrl.adjusted(QUrl::RemoveFilename | QUrl::StripTrailingSlash);
-    while (parentUrl != m_url) {
+    const auto containingUrl = m_url.adjusted(QUrl::StripTrailingSlash);
+    while (parentUrl != containingUrl) {
         targetUrl = parentUrl;
         parentUrl = targetUrl.adjusted(QUrl::RemoveFilename | QUrl::StripTrailingSlash);
     }
@@ -2029,6 +2049,7 @@ void DolphinView::selectNextItem()
         const auto nextItem = qMin(lastSelectedIndex + 1, itemsCount() - 1);
         selectionManager->setCurrentItem(nextItem);
         selectionManager->clearSelection();
+        selectionManager->setSelected(nextItem, 1, KItemListSelectionManager::Select);
 
         m_selectNextItem = false;
     }
@@ -2162,7 +2183,7 @@ void DolphinView::slotRoleEditingFinished(int index, const QByteArray &role, con
     }
 
     if (role == "text") {
-        const KFileItem oldItem = items.first();
+        const KFileItem &oldItem = items.first();
         const EditResult retVal = value.value<EditResult>();
         const QString newName = retVal.newName;
         if (!newName.isEmpty() && newName != oldItem.text() && newName != QLatin1Char('.') && newName != QLatin1String("..")) {
@@ -2408,40 +2429,58 @@ void DolphinView::applyModeToView()
 
 void DolphinView::applyDynamicView()
 {
-    ViewProperties props(viewPropertiesUrl());
     /* return early if:
      * - dynamic view is not enabled
      * - the current view mode is already Icon View
      * - dynamic view has previously changed the view mode
      */
-    if (!GeneralSettings::dynamicView() || m_mode == IconsView || props.dynamicViewPassed()) {
+    if (!GeneralSettings::dynamicView() || m_mode == IconsView) {
+        return;
+    }
+
+    ViewProperties props(viewPropertiesUrl());
+    if (props.dynamicViewPassed()) {
         return;
     }
 
     uint imageAndVideoCount = 0;
     uint checkedItems = 0;
+    uint checkedItemDir = 0;
+    constexpr float folderWeight = 1.00/3;
     const uint totalItems = itemsCount();
     const KFileItemList itemList = items();
     bool applyDynamicView = false;
 
+    // If any of the files are expanded, we do not want to interrupt
+    // the user workflow with dynamic changes
+    for (const auto &item : itemList) {
+        if (item.isDir() && isExpanded(item)) {
+            return;
+        }
+    }
+
     for (const auto &file : itemList) {
-        ++checkedItems;
+        if (file.isFile()) {
+            ++checkedItems;
 #if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
-        const QString type = file.mimetype().slice(0, 5);
+            const QString type = file.mimetype().slice(0, 5);
 #else
-        const QString type = file.mimetype().sliced(0, 5);
+            const QString type = file.mimetype().sliced(0, 5);
 #endif
 
-        if (type == "image" || type == "video") {
-            ++imageAndVideoCount;
-            // if 2/3 or more of the items are images/videos, dynamic view should be applied
-            applyDynamicView = imageAndVideoCount >= (totalItems * 2 / 3);
-            if (applyDynamicView) {
-                break;
+            if (type == "image" || type == "video") {
+                ++imageAndVideoCount;
+                // if 2/3 or more of the items are images/videos, dynamic view should be applied
+                applyDynamicView = imageAndVideoCount >= ((totalItems - (checkedItemDir * (1 - folderWeight))) * 2 / 3);
+                if (applyDynamicView) {
+                    break;
+                }
+            } else if (checkedItems - imageAndVideoCount > (totalItems - (checkedItemDir * (1 - folderWeight))) / 3) {
+                // if more than a third of the checked files are not media files, return
+                return;
             }
-        } else if (checkedItems - imageAndVideoCount > totalItems / 3) {
-            // if more than a third of the checked files are not media files, return
-            return;
+        } else {
+            ++checkedItemDir;
         }
     }
 
@@ -2704,6 +2743,13 @@ Qt::SortOrder DolphinView::preferredSortOrder(const QByteArray &role) const
 void DolphinView::setPreferredSortOrder(const QByteArray &role, Qt::SortOrder order)
 {
     m_rolesSortOrder[role] = order;
+}
+
+void DolphinView::expandToUrl(const QUrl &directory)
+{
+    if (viewMode() == Mode::DetailsView && DetailsModeSettings::expandableFolders()) {
+        m_model->expandParentDirectories(directory);
+    }
 }
 
 #include "moc_dolphinview.cpp"

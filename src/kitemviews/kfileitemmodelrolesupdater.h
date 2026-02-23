@@ -148,17 +148,6 @@ public:
     QStringList enabledPlugins() const;
 
     /**
-     * Sets the maximum file size of local files for which
-     * previews will be generated (if enabled). A value of 0
-     * indicates no file size limit.
-     * Per default the value from KConfigGroup "PreviewSettings"
-     * MaximumSize is used, 0 otherwise.
-     * @param size
-     */
-    void setLocalFileSizePreviewLimit(qlonglong size);
-    qlonglong localFileSizePreviewLimit() const;
-
-    /**
      * If set to true, directories contents are scanned to determine their size
      * Default true
      */
@@ -325,7 +314,7 @@ private:
     void applySortProgressToModel();
 
     enum ResolveHint { ResolveFast, ResolveAll };
-    bool applyResolvedRoles(int index, ResolveHint hint);
+    bool applyResolvedRoles(int index, ResolveHint hint, const KFileItem &referenceItem = KFileItem());
     QHash<QByteArray, QVariant> rolesData(const KFileItem &item, int index);
 
     /**
@@ -342,7 +331,7 @@ private:
 
     void resetSizeData(const int index, const int size = 0);
 
-    void recountDirectoryItems(const QList<QUrl> directories);
+    void recountDirectoryItems(const QList<QUrl> &directories);
 
 private:
     QSize cacheSize();
@@ -385,7 +374,6 @@ private:
     QSet<QByteArray> m_roles;
     QSet<QByteArray> m_resolvableRoles;
     QStringList m_enabledPlugins;
-    qulonglong m_localFileSizePreviewLimit;
 
     // Items for which the sort role still has to be determined.
     QSet<KFileItem> m_pendingSortRoleItems;

@@ -21,6 +21,7 @@
 #include <QToolButton>
 #include <QVBoxLayout>
 
+#include <ranges>
 #include <unordered_set>
 
 using namespace SelectionMode;
@@ -42,31 +43,42 @@ void BottomBarContentsContainer::resetContents(BottomBar::Contents contents)
         updateExplanatoryLabelVisibility();
     });
 
-    Q_CHECK_PTR(m_actionCollection);
+    Q_ASSERT(m_actionCollection);
     m_contents = contents;
     switch (contents) {
     case BottomBar::CopyContents:
-        return addCopyContents();
+        addCopyContents();
+        break;
     case BottomBar::CopyLocationContents:
-        return addCopyLocationContents();
+        addCopyLocationContents();
+        break;
     case BottomBar::CopyToOtherViewContents:
-        return addCopyToOtherViewContents();
+        addCopyToOtherViewContents();
+        break;
     case BottomBar::CutContents:
-        return addCutContents();
+        addCutContents();
+        break;
     case BottomBar::DeleteContents:
-        return addDeleteContents();
+        addDeleteContents();
+        break;
     case BottomBar::DuplicateContents:
-        return addDuplicateContents();
+        addDuplicateContents();
+        break;
     case BottomBar::GeneralContents:
-        return addGeneralContents();
+        addGeneralContents();
+        break;
     case BottomBar::PasteContents:
-        return addPasteContents();
+        addPasteContents();
+        break;
     case BottomBar::MoveToOtherViewContents:
-        return addMoveToOtherViewContents();
+        addMoveToOtherViewContents();
+        break;
     case BottomBar::MoveToTrashContents:
-        return addMoveToTrashContents();
+        addMoveToTrashContents();
+        break;
     case BottomBar::RenameContents:
-        return addRenameContents();
+        addRenameContents();
+        break;
     }
 }
 
@@ -78,18 +90,18 @@ void BottomBarContentsContainer::adaptToNewBarWidth(int newBarWidth)
         Q_ASSERT(m_overflowButton);
         if (unusedSpace() < 0) {
             // The bottom bar is overflowing! We need to hide some of the widgets.
-            for (auto i = m_generalBarActions.rbegin(); i != m_generalBarActions.rend(); ++i) {
-                if (!i->isWidgetVisible()) {
+            for (auto &m_generalBarAction : std::ranges::reverse_view(m_generalBarActions)) {
+                if (!m_generalBarAction.isWidgetVisible()) {
                     continue;
                 }
-                i->widget()->setVisible(false);
+                m_generalBarAction.widget()->setVisible(false);
 
                 // Add the action to the overflow.
                 auto overflowMenu = m_overflowButton->menu();
                 if (overflowMenu->actions().isEmpty()) {
-                    overflowMenu->addAction(i->action());
+                    overflowMenu->addAction(m_generalBarAction.action());
                 } else {
-                    overflowMenu->insertAction(overflowMenu->actions().at(0), i->action());
+                    overflowMenu->insertAction(overflowMenu->actions().at(0), m_generalBarAction.action());
                 }
                 m_overflowButton->setVisible(true);
                 if (unusedSpace() >= 0) {
@@ -98,24 +110,24 @@ void BottomBarContentsContainer::adaptToNewBarWidth(int newBarWidth)
             }
         } else {
             // We have some unusedSpace(). Let's check if we can maybe add more of the contextual actions' widgets.
-            for (auto i = m_generalBarActions.begin(); i != m_generalBarActions.end(); ++i) {
-                if (i->isWidgetVisible()) {
+            for (auto &m_generalBarAction : m_generalBarActions) {
+                if (m_generalBarAction.isWidgetVisible()) {
                     continue;
                 }
-                if (!i->widget()) {
-                    i->newWidget(this);
-                    i->widget()->setVisible(false);
-                    m_layout->insertWidget(m_layout->count() - 1, i->widget()); // Insert before m_overflowButton
+                if (!m_generalBarAction.widget()) {
+                    m_generalBarAction.newWidget(this);
+                    m_generalBarAction.widget()->setVisible(false);
+                    m_layout->insertWidget(m_layout->count() - 1, m_generalBarAction.widget()); // Insert before m_overflowButton
                 }
-                if (unusedSpace() < i->widget()->sizeHint().width()) {
+                if (unusedSpace() < m_generalBarAction.widget()->sizeHint().width()) {
                     // It doesn't fit. We keep it invisible.
                     break;
                 }
-                i->widget()->setVisible(true);
+                m_generalBarAction.widget()->setVisible(true);
 
                 // Remove the action from the overflow.
                 auto overflowMenu = m_overflowButton->menu();
-                overflowMenu->removeAction(i->action());
+                overflowMenu->removeAction(m_generalBarAction.action());
                 if (overflowMenu->isEmpty()) {
                     m_overflowButton->setVisible(false);
                 }
@@ -139,8 +151,8 @@ void BottomBarContentsContainer::slotSelectionChanged(const KFileItemList &selec
                 Q_EMIT barVisibilityChangeRequested(false);
             }
         } else {
-            for (auto i = contextActions.begin(); i != contextActions.end(); ++i) {
-                m_generalBarActions.emplace_back(ActionWithWidget{*i});
+            for (auto &contextAction : contextActions) {
+                m_generalBarActions.emplace_back(ActionWithWidget{contextAction});
             }
             resetContents(BottomBar::GeneralContents);
 
@@ -499,7 +511,7 @@ std::vector<QAction *> BottomBarContentsContainer::contextActionsFor(const KFile
 
     // We are going to add the actions from the right-click context menu for the selected items.
     auto *dolphinMainWindow = qobject_cast<DolphinMainWindow *>(window());
-    Q_CHECK_PTR(dolphinMainWindow);
+    Q_ASSERT(dolphinMainWindow);
     if (!m_fileItemActions) {
         m_fileItemActions = new KFileItemActions(this);
         m_fileItemActions->setParentWidget(dolphinMainWindow);

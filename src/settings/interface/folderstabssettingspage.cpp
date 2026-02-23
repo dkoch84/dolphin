@@ -36,6 +36,8 @@ FoldersTabsSettingsPage::FoldersTabsSettingsPage(QWidget *parent)
     , m_homeUrlRadioButton(nullptr)
     , m_homeUrl(nullptr)
     , m_rememberOpenedTabsRadioButton(nullptr)
+    , m_alwaysShowTabBar(nullptr)
+    , m_showCloseButtonOnTabs(nullptr)
     , m_openNewTabAfterLastTab(nullptr)
     , m_openNewTabAfterCurrentTab(nullptr)
     , m_splitView(nullptr)
@@ -117,6 +119,22 @@ FoldersTabsSettingsPage::FoldersTabsSettingsPage(QWidget *parent)
     topLayout->addItem(new QSpacerItem(0, Dolphin::VERTICAL_SPACER_HEIGHT, QSizePolicy::Fixed, QSizePolicy::Fixed));
 
     // Tabs properties
+    m_alwaysShowTabBar = new QCheckBox(i18nc("@option:check", "Always show tab bar"));
+    topLayout->addRow(i18nc("@label:checkbox", "Tab width:"), m_alwaysShowTabBar);
+    m_showCloseButtonOnTabs = new QCheckBox(i18nc("@option:check", "Show close button on tabs"));
+    topLayout->addRow(QString(), m_showCloseButtonOnTabs);
+
+    m_tabStyleAutoWidth = new QRadioButton(i18nc("@option:radio size as in tab width", "Tab width adapts to folder name"));
+    m_tabStyleFixed = new QRadioButton(i18nc("@option:radio size as in tab width", "Tabs all have the same fixed width"));
+    m_tabStyleFullWidth = new QRadioButton(i18nc("@option:radio width as in tab width", "Tabs span the available width"));
+    QButtonGroup *tabStyleGroup = new QButtonGroup(this);
+    tabStyleGroup->addButton(m_tabStyleAutoWidth);
+    tabStyleGroup->addButton(m_tabStyleFixed);
+    tabStyleGroup->addButton(m_tabStyleFullWidth);
+    topLayout->addRow(i18nc("@title:group", "Tab style: "), m_tabStyleAutoWidth);
+    topLayout->addRow(QString(), m_tabStyleFixed);
+    topLayout->addRow(QString(), m_tabStyleFullWidth);
+
     m_openNewTabAfterCurrentTab = new QRadioButton(i18nc("option:radio", "After current tab"));
     m_openNewTabAfterLastTab = new QRadioButton(i18nc("option:radio", "At end of tab bar"));
     QButtonGroup *tabsBehaviorGroup = new QButtonGroup(this);
@@ -165,13 +183,18 @@ FoldersTabsSettingsPage::FoldersTabsSettingsPage(QWidget *parent)
 
     connect(m_closeSplitComboBox, qOverload<int>(&QComboBox::currentIndexChanged), this, &FoldersTabsSettingsPage::changed);
 
+    connect(m_alwaysShowTabBar, &QCheckBox::toggled, this, &FoldersTabsSettingsPage::changed);
+    connect(m_showCloseButtonOnTabs, &QCheckBox::toggled, this, &FoldersTabsSettingsPage::changed);
+
     connect(m_openNewTabAfterCurrentTab, &QRadioButton::toggled, this, &FoldersTabsSettingsPage::changed);
     connect(m_openNewTabAfterLastTab, &QRadioButton::toggled, this, &FoldersTabsSettingsPage::changed);
+
+    connect(m_tabStyleAutoWidth, &QRadioButton::toggled, this, &FoldersTabsSettingsPage::slotSettingsChanged);
+    connect(m_tabStyleFixed, &QRadioButton::toggled, this, &FoldersTabsSettingsPage::slotSettingsChanged);
+    connect(m_tabStyleFullWidth, &QRadioButton::toggled, this, &FoldersTabsSettingsPage::slotSettingsChanged);
 }
 
-FoldersTabsSettingsPage::~FoldersTabsSettingsPage()
-{
-}
+FoldersTabsSettingsPage::~FoldersTabsSettingsPage() = default;
 
 void FoldersTabsSettingsPage::applySettings()
 {
@@ -209,7 +232,18 @@ void FoldersTabsSettingsPage::applySettings()
     settings->setOpenExternallyCalledFolderInNewTab(m_openExternallyCalledFolderInNewTab->isChecked());
     settings->setShowFullPathInTitlebar(m_showFullPathInTitlebar->isChecked());
 
+    settings->setAlwaysShowTabBar(m_alwaysShowTabBar->isChecked());
+    settings->setShowCloseButtonOnTabs(m_showCloseButtonOnTabs->isChecked());
+
     settings->setOpenNewTabAfterLastTab(m_openNewTabAfterLastTab->isChecked());
+
+    if (m_tabStyleFixed->isChecked()) {
+        settings->setTabStyle(GeneralSettings::EnumTabStyle::FixedSize);
+    } else if (m_tabStyleFullWidth->isChecked()) {
+        settings->setTabStyle(GeneralSettings::EnumTabStyle::FullWidth);
+    } else {
+        settings->setTabStyle(GeneralSettings::EnumTabStyle::AutoSize);
+    }
 
     settings->save();
 }
@@ -289,8 +323,15 @@ void FoldersTabsSettingsPage::loadSettings()
 
     m_closeSplitComboBox->setCurrentIndex(GeneralSettings::closeSplitViewChoice());
 
+    m_alwaysShowTabBar->setChecked(GeneralSettings::alwaysShowTabBar());
+    m_showCloseButtonOnTabs->setChecked(GeneralSettings::showCloseButtonOnTabs());
+
     m_openNewTabAfterLastTab->setChecked(GeneralSettings::openNewTabAfterLastTab());
     m_openNewTabAfterCurrentTab->setChecked(!m_openNewTabAfterLastTab->isChecked());
+
+    m_tabStyleAutoWidth->setChecked(GeneralSettings::tabStyle() == GeneralSettings::EnumTabStyle::AutoSize);
+    m_tabStyleFixed->setChecked(GeneralSettings::tabStyle() == GeneralSettings::EnumTabStyle::FixedSize);
+    m_tabStyleFullWidth->setChecked(GeneralSettings::tabStyle() == GeneralSettings::EnumTabStyle::FullWidth);
 }
 
 void FoldersTabsSettingsPage::showSetDefaultDirectoryError()

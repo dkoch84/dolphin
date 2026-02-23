@@ -60,9 +60,7 @@ KFileItemListView::KFileItemListView(QGraphicsWidget *parent)
     setVisibleRoles({"text"});
 }
 
-KFileItemListView::~KFileItemListView()
-{
-}
+KFileItemListView::~KFileItemListView() = default;
 
 void KFileItemListView::setPreviewsShown(bool show)
 {
@@ -105,18 +103,6 @@ void KFileItemListView::setEnabledPlugins(const QStringList &list)
 QStringList KFileItemListView::enabledPlugins() const
 {
     return m_modelRolesUpdater ? m_modelRolesUpdater->enabledPlugins() : QStringList();
-}
-
-void KFileItemListView::setLocalFileSizePreviewLimit(const qlonglong size)
-{
-    if (m_modelRolesUpdater) {
-        m_modelRolesUpdater->setLocalFileSizePreviewLimit(size);
-    }
-}
-
-qlonglong KFileItemListView::localFileSizePreviewLimit() const
-{
-    return m_modelRolesUpdater ? m_modelRolesUpdater->localFileSizePreviewLimit() : 0;
 }
 
 QPixmap KFileItemListView::createDragPixmap(const KItemSet &indexes) const

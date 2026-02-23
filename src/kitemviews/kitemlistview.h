@@ -904,7 +904,7 @@ void KItemListWidgetCreator<T>::calculateItemSizeHints(QVector<std::pair<qreal, 
                                                        qreal &logicalWidthHint,
                                                        const KItemListView *view) const
 {
-    return m_informant->calculateItemSizeHints(logicalHeightHints, logicalWidthHint, view);
+    m_informant->calculateItemSizeHints(logicalHeightHints, logicalWidthHint, view);
 }
 
 template<class T>
@@ -938,9 +938,7 @@ public:
 };
 
 template<class T>
-KItemListGroupHeaderCreator<T>::~KItemListGroupHeaderCreator()
-{
-}
+KItemListGroupHeaderCreator<T>::~KItemListGroupHeaderCreator() = default;
 
 template<class T>
 KItemListGroupHeader *KItemListGroupHeaderCreator<T>::create(KItemListView *view)

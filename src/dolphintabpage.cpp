@@ -336,7 +336,7 @@ void DolphinTabPage::restoreState(const QByteArray &state)
     // Read the version number of the tab state and check if the version is supported.
     quint32 version = 0;
     stream >> version;
-    if (version != 3) {
+    if (version < 2 || version > 3) {
         // The version of the tab state isn't supported, we can't restore it.
         return;
     }
@@ -374,7 +374,9 @@ void DolphinTabPage::restoreState(const QByteArray &state)
     QByteArray splitterState;
     stream >> splitterState;
     m_splitter->restoreState(splitterState);
-    stream >> m_splitterLastPosition;
+    if (version >= 3) {
+        stream >> m_splitterLastPosition;
+    }
 
     if (!stream.atEnd()) {
         QString tabTitle;
@@ -423,7 +425,7 @@ void DolphinTabPage::slotAnimationFinished()
 
 void DolphinTabPage::slotAnimationValueChanged(const QVariant &value)
 {
-    Q_CHECK_PTR(m_expandingContainer);
+    Q_ASSERT(m_expandingContainer);
     const int indexOfExpandingContainer = m_splitter->indexOf(m_expandingContainer);
     int indexOfNonExpandingContainer = -1;
     if (m_expandingContainer == m_primaryViewContainer) {
@@ -531,7 +533,7 @@ DolphinViewContainer *DolphinTabPage::createViewContainer(const QUrl &url) const
 
 void DolphinTabPage::startExpandViewAnimation(DolphinViewContainer *expandingContainer)
 {
-    Q_CHECK_PTR(expandingContainer);
+    Q_ASSERT(expandingContainer);
     Q_ASSERT(expandingContainer == m_primaryViewContainer || expandingContainer == m_secondaryViewContainer);
     m_expandingContainer = expandingContainer;
 

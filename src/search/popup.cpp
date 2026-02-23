@@ -55,7 +55,7 @@ QString Search::balooUiName()
 
 Popup::Popup(std::shared_ptr<const DolphinQuery> dolphinQuery, QWidget *parent)
     : WidgetMenu{parent}
-    , UpdatableStateInterface{dolphinQuery}
+    , UpdatableStateInterface{std::move(dolphinQuery)}
 {
 }
 
@@ -83,7 +83,7 @@ QWidget *Popup::init()
         SearchSettings::self()->save();
         DolphinQuery searchConfigurationCopy = *m_searchConfiguration;
         searchConfigurationCopy.setSearchThrough(SearchThrough::FileNames);
-        Q_EMIT configurationChanged(std::move(searchConfigurationCopy));
+        Q_EMIT configurationChanged(searchConfigurationCopy);
     });
     verticalMainLayout->addWidget(m_searchInFileNamesRadioButton);
 
@@ -96,7 +96,7 @@ QWidget *Popup::init()
         SearchSettings::self()->save();
         DolphinQuery searchConfigurationCopy = *m_searchConfiguration;
         searchConfigurationCopy.setSearchThrough(SearchThrough::FileContents);
-        Q_EMIT configurationChanged(std::move(searchConfigurationCopy));
+        Q_EMIT configurationChanged(searchConfigurationCopy);
     });
     verticalMainLayout->addWidget(m_searchInFileContentsRadioButton);
 

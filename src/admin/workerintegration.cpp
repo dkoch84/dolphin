@@ -62,7 +62,7 @@ void Admin::guideUserTowardsInstallingAdminWorker()
         DolphinPackageInstaller adminWorkerInstaller{ADMIN_WORKER_PACKAGE_NAME, QUrl(QStringLiteral("appstream://org.kde.kio.admin")), isWorkerInstalled};
         QObject::connect(&adminWorkerInstaller, &KJob::result, [](KJob *job) {
             if (job->error()) {
-                std::cout << qPrintable(job->errorString()) << std::endl;
+                std::cout << qPrintable(job->errorString()) << '\n';
                 exit(1);
             }
         });
@@ -112,8 +112,8 @@ WorkerIntegration::WorkerIntegration(DolphinMainWindow *parent, QAction *actAsAd
     : QObject{parent}
     , m_actAsAdminAction{actAsAdminAction}
 {
-    Q_CHECK_PTR(parent);
-    Q_CHECK_PTR(actAsAdminAction);
+    Q_ASSERT(parent);
+    Q_ASSERT(actAsAdminAction);
 
     connect(parent, &DolphinMainWindow::urlChanged, this, &WorkerIntegration::updateActAsAdminAction);
 

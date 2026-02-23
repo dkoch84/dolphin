@@ -46,7 +46,6 @@ const int RepeatingAutoScrollDelay = 1000 / 60;
 const int RubberFadeSpeed = 150;
 
 const char *RubberPropertyName = "_kitemviews_rubberBandPosition";
-}
 
 #ifndef QT_NO_ACCESSIBILITY
 QAccessibleInterface *accessibleInterfaceFactory(const QString &key, QObject *object)
@@ -67,6 +66,7 @@ QAccessibleInterface *accessibleInterfaceFactory(const QString &key, QObject *ob
     return nullptr;
 }
 #endif
+}
 
 KItemListView::KItemListView(QGraphicsWidget *parent)
     : QGraphicsWidget(parent)
@@ -355,7 +355,7 @@ void KItemListView::setAccessibleParentsObject(KItemListContainer *accessiblePar
 }
 KItemListContainerAccessible *KItemListView::accessibleParent()
 {
-    Q_CHECK_PTR(m_accessibleParent); // We always want the accessibility tree/hierarchy to be complete.
+    Q_ASSERT(m_accessibleParent); // We always want the accessibility tree/hierarchy to be complete.
     return m_accessibleParent;
 }
 #endif
@@ -2881,9 +2881,7 @@ QGraphicsWidget *KItemListCreatorBase::popRecycleableWidget()
     return widget;
 }
 
-KItemListWidgetCreatorBase::~KItemListWidgetCreatorBase()
-{
-}
+KItemListWidgetCreatorBase::~KItemListWidgetCreatorBase() = default;
 
 void KItemListWidgetCreatorBase::recycle(KItemListWidget *widget)
 {
@@ -2892,9 +2890,7 @@ void KItemListWidgetCreatorBase::recycle(KItemListWidget *widget)
     pushRecycleableWidget(widget);
 }
 
-KItemListGroupHeaderCreatorBase::~KItemListGroupHeaderCreatorBase()
-{
-}
+KItemListGroupHeaderCreatorBase::~KItemListGroupHeaderCreatorBase() = default;
 
 void KItemListGroupHeaderCreatorBase::recycle(KItemListGroupHeader *header)
 {

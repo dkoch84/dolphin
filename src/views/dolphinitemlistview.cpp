@@ -66,12 +66,18 @@ void DolphinItemListView::setEnabledSelectionToggles(DolphinItemListView::Select
 {
     m_selectionTogglesEnabled = selectionTogglesEnabled;
     switch (m_selectionTogglesEnabled) {
-    case True:
-        return setEnabledSelectionToggles(true);
-    case False:
-        return setEnabledSelectionToggles(false);
-    case FollowSetting:
-        return setEnabledSelectionToggles(GeneralSettings::showSelectionToggle());
+    case True: {
+        setEnabledSelectionToggles(true);
+        return;
+    }
+    case False: {
+        setEnabledSelectionToggles(false);
+        return;
+    }
+    case FollowSetting: {
+        setEnabledSelectionToggles(GeneralSettings::showSelectionToggle());
+        return;
+    }
     }
 }
 
@@ -95,7 +101,6 @@ void DolphinItemListView::readSettings()
 
     const KConfigGroup globalConfig(KSharedConfig::openConfig(), QStringLiteral("PreviewSettings"));
     setEnabledPlugins(globalConfig.readEntry("Plugins", KIO::PreviewJob::defaultPlugins()));
-    setLocalFileSizePreviewLimit(globalConfig.readEntry("MaximumSize", 0));
     endTransaction();
 }
 

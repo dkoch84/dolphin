@@ -56,6 +56,13 @@ private:
     QLineEdit *m_homeUrl;
     QRadioButton *m_rememberOpenedTabsRadioButton;
 
+    QCheckBox* m_alwaysShowTabBar;
+    QCheckBox* m_showCloseButtonOnTabs;
+
+    QRadioButton *m_tabStyleAutoWidth = nullptr;
+    QRadioButton *m_tabStyleFixed = nullptr;
+    QRadioButton *m_tabStyleFullWidth = nullptr;
+
     QRadioButton *m_openNewTabAfterLastTab;
     QRadioButton *m_openNewTabAfterCurrentTab;
 

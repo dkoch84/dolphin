@@ -417,7 +417,7 @@ bool KFileItemModel::canEnterOnHover(int index) const
     } else {
         item = fileItem(index);
     }
-    return !item.isNull() && (item.isDir() || item.isDesktopFile());
+    return !item.isNull() && (item.isDir() || item.isDesktopFile() || (item.isFile() && item.isLocalFile() && item.isExecutable()));
 }
 
 QString KFileItemModel::roleDescription(const QByteArray &role) const
@@ -780,15 +780,41 @@ void KFileItemModel::expandParentDirectories(const QUrl &url)
         m_urlsToExpand.insert(urlToExpand);
     }
 
+    auto expandUrlAfterInserted = [this](const QUrl &url) {
+        // need to wait for the item to be added to the model
+        QMetaObject::Connection *connection = new QMetaObject::Connection;
+        *connection = connect(this, &KFileItemModel::itemsInserted, this, [this, url, connection](const KItemRangeList &ranges) {
+            int idx = -1;
+            for (const KItemRange &it : ranges) {
+                for (int i = 0; i < it.count; ++i) {
+                    if (fileItem(it.index + i).url() == url) {
+                        idx = it.index + i;
+                        break;
+                    }
+                }
+                if (idx != -1) {
+                    break;
+                }
+            }
+
+            if (idx != -1) {
+                setExpanded(idx, true);
+                disconnect(*connection);
+                delete connection;
+            }
+        });
+    };
+
     // KDirLister::open() must called at least once to trigger an initial
     // loading. The pending URLs that must be restored are handled
     // in slotCompleted().
-    QSetIterator<QUrl> it2(m_urlsToExpand);
-    while (it2.hasNext()) {
-        const int idx = index(it2.next());
-        if (idx >= 0 && !isExpanded(idx)) {
+    for (const auto &url : std::as_const(m_urlsToExpand)) {
+        const int idx = index(url);
+        if (idx >= 0) {
             setExpanded(idx, true);
-            break;
+        } else {
+            // expand to url asynchronously
+            expandUrlAfterInserted(url);
         }
     }
 }
@@ -1876,8 +1902,8 @@ void KFileItemModel::emitItemsChangedAndTriggerResorting(const KItemRangeList &i
 
 void KFileItemModel::resetRoles()
 {
-    for (int i = 0; i < RolesCount; ++i) {
-        m_requestRole[i] = false;
+    for (bool &i : m_requestRole) {
+        i = false;
     }
 }
 
@@ -1953,7 +1979,8 @@ QHash<QByteArray, QVariant> KFileItemModel::retrieveData(const KFileItem &item, 
     }
 
     if (m_requestRole[IsHiddenRole]) {
-        data.insert(sharedValue("isHidden"), item.isHidden() || item.mimetype() == QStringLiteral("application/x-trash"));
+        // all "temporary" file types are identified by glob, currentMimeType is therefore enough.
+        data.insert(sharedValue("isHidden"), item.isHidden() || item.currentMimeType().name() == QStringLiteral("application/x-trash"));
     }
 
     if (m_requestRole[NameRole]) {
@@ -2860,19 +2887,28 @@ const KFileItemModel::RoleInfoMap *KFileItemModel::rolesInfoMap(int &count)
         { "lineCount",           LineCountRole,           kli18nc("@label", "Line Count"),           kli18nc("@label", "Document"), KLazyLocalizedString(),                    true,            true  },
         { "imageDateTime",       ImageDateTimeRole,       kli18nc("@label", "Date Photographed"),    kli18nc("@label", "Image"),    KLazyLocalizedString(),                    true,            true  },
         { "dimensions",          DimensionsRole,          kli18nc("@label width x height", "Dimensions"), kli18nc("@label", "Image"), KLazyLocalizedString(),                  true,            true  },
-        { "width",               WidthRole,               kli18nc("@label", "Width"),                kli18nc("@label", "Image"),    KLazyLocalizedString(),                    true,            true  },
         { "height",              HeightRole,              kli18nc("@label", "Height"),               kli18nc("@label", "Image"),    KLazyLocalizedString(),                    true,            true  },
         { "orientation",         OrientationRole,         kli18nc("@label", "Orientation"),          kli18nc("@label", "Image"),    KLazyLocalizedString(),                    true,            true  },
-        { "artist",              ArtistRole,              kli18nc("@label", "Artist"),               kli18nc("@label", "Audio"),    KLazyLocalizedString(),                    true,            true  },
-        { "genre",               GenreRole,               kli18nc("@label", "Genre"),                kli18nc("@label", "Audio"),    KLazyLocalizedString(),                    true,            true  },
+        { "width",               WidthRole,               kli18nc("@label", "Width"),                kli18nc("@label", "Image"),    KLazyLocalizedString(),                    true,            true  },
         { "album",               AlbumRole,               kli18nc("@label", "Album"),                kli18nc("@label", "Audio"),    KLazyLocalizedString(),                    true,            true  },
-        { "duration",            DurationRole,            kli18nc("@label", "Duration"),             kli18nc("@label", "Audio"),    KLazyLocalizedString(),                    true,            true  },
+        { "artist",              ArtistRole,              kli18nc("@label", "Artist"),               kli18nc("@label", "Audio"),    KLazyLocalizedString(),                    true,            true  },
+        { "audioCodec",          AudioCodecRole,          kli18nc("@label", "Audio Codec"),          kli18nc("@label", "Audio"),    KLazyLocalizedString(),                    true,            true  },
         { "bitrate",             BitrateRole,             kli18nc("@label", "Bitrate"),              kli18nc("@label", "Audio"),    KLazyLocalizedString(),                    true,            true  },
-        { "track",               TrackRole,               kli18nc("@label", "Track"),                kli18nc("@label", "Audio"),    KLazyLocalizedString(),                    true,            true  },
+        { "duration",            DurationRole,            kli18nc("@label", "Duration"),             kli18nc("@label", "Audio"),    KLazyLocalizedString(),                    true,            true  },
+        { "genre",               GenreRole,               kli18nc("@label", "Genre"),                kli18nc("@label", "Audio"),    KLazyLocalizedString(),                    true,            true  },
         { "releaseYear",         ReleaseYearRole,         kli18nc("@label", "Release Year"),         kli18nc("@label", "Audio"),    KLazyLocalizedString(),                    true,            true  },
+        { "track",               TrackRole,               kli18nc("@label", "Track"),                kli18nc("@label", "Audio"),    KLazyLocalizedString(),                    true,            true  },
         { "aspectRatio",         AspectRatioRole,         kli18nc("@label", "Aspect Ratio"),         kli18nc("@label", "Video"),    KLazyLocalizedString(),                    true,            true  },
-        { "frameRate",           FrameRateRole,           kli18nc("@label", "Frame Rate"),           kli18nc("@label", "Video"),    KLazyLocalizedString(),                    true,            true  },
+        { "audioCodec",          AudioCodecRole,          kli18nc("@label", "Audio Codec"),          kli18nc("@label", "Video"),    KLazyLocalizedString(),                    true,            true  },
+        { "bitrate",             BitrateRole,             kli18nc("@label", "Bitrate"),              kli18nc("@label", "Video"),    KLazyLocalizedString(),                    true,            true  },
+        { "colorSpace",          ColorSpaceRole,          kli18nc("@label", "Color Space"),          kli18nc("@label", "Video"),    KLazyLocalizedString(),                    true,            true  },
+        { "dimensions",          DimensionsRole,          kli18nc("@label width x height", "Dimensions"), kli18nc("@label", "Video"), KLazyLocalizedString(),                  true,            true  },
         { "duration",            DurationRole,            kli18nc("@label", "Duration"),             kli18nc("@label", "Video"),    KLazyLocalizedString(),                    true,            true  },
+        { "frameRate",           FrameRateRole,           kli18nc("@label", "Frame Rate"),           kli18nc("@label", "Video"),    KLazyLocalizedString(),                    true,            true  },
+        { "height",              HeightRole,              kli18nc("@label", "Height"),               kli18nc("@label", "Video"),    KLazyLocalizedString(),                    true,            true  },
+        { "pixelFormat",         PixelFormatRole,         kli18nc("@label", "Pixel Format"),         kli18nc("@label", "Video"),    KLazyLocalizedString(),                    true,            true  },
+        { "videoCodec",          VideoCodecRole,          kli18nc("@label", "Video Codec"),          kli18nc("@label", "Video"),    KLazyLocalizedString(),                    true,            true  },
+        { "width",               WidthRole,               kli18nc("@label", "Width"),                kli18nc("@label", "Video"),    KLazyLocalizedString(),                    true,            true  },
         { "path",                PathRole,                kli18nc("@label", "Path"),                 kli18nc("@label", "Other"),    KLazyLocalizedString(),                    false,           false },
         { "extension",           ExtensionRole,           kli18nc("@label", "File Extension"),       kli18nc("@label", "Other"),    KLazyLocalizedString(),                    false,           false },
         { "deletiontime",        DeletionTimeRole,        kli18nc("@label", "Deletion Time"),        kli18nc("@label", "Other"),    KLazyLocalizedString(),                    false,           false },

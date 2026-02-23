@@ -25,7 +25,7 @@
 
 #include <memory>
 
-typedef KIO::FileUndoManager::CommandType CommandType;
+using CommandType = KIO::FileUndoManager::CommandType;
 class QVBoxLayout;
 class DolphinItemListView;
 class KFileItemModel;
@@ -392,6 +392,11 @@ public:
      * item is covered by statusbar.
      */
     void setStatusBarOffset(int offset);
+
+    /**
+     * Expands to directory if in detail mode
+     */
+    void expandToUrl(const QUrl &directory);
 
 public Q_SLOTS:
 
@@ -960,7 +965,7 @@ private:
 
     bool tryShowNameToolTip(QHelpEvent *event);
 
-    void selectFileOnceAvailable(const QUrl &url, std::function<bool()> condition);
+    void selectFileOnceAvailable(const QUrl &url, const std::function<bool()> &condition);
 
 private:
     void updatePalette();

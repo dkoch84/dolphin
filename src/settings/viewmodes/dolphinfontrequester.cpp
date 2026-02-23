@@ -38,9 +38,7 @@ DolphinFontRequester::DolphinFontRequester(QWidget *parent)
     topLayout->addWidget(m_chooseFontButton);
 }
 
-DolphinFontRequester::~DolphinFontRequester()
-{
-}
+DolphinFontRequester::~DolphinFontRequester() = default;
 
 void DolphinFontRequester::setMode(Mode mode)
 {
@@ -72,10 +70,10 @@ QFont DolphinFontRequester::customFont() const
 void DolphinFontRequester::openFontDialog()
 {
     bool ok = false;
-    const QFont font = QFontDialog::getFont(&ok, this);
+    const QFont initialFont = currentFont();
+    const QFont font = QFontDialog::getFont(&ok, initialFont, this);
     if (ok) {
         m_customFont = font;
-        m_modeCombo->setFont(m_customFont);
         Q_EMIT changed();
     }
 }

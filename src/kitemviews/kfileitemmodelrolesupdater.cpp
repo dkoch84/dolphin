@@ -76,7 +76,6 @@ KFileItemModelRolesUpdater::KFileItemModelRolesUpdater(KFileItemModel *model, QO
     , m_roles()
     , m_resolvableRoles()
     , m_enabledPlugins()
-    , m_localFileSizePreviewLimit(0)
     , m_pendingSortRoleItems()
     , m_pendingIndexes()
     , m_pendingPreviewItems()
@@ -97,7 +96,6 @@ KFileItemModelRolesUpdater::KFileItemModelRolesUpdater(KFileItemModel *model, QO
 
     const KConfigGroup globalConfig(KSharedConfig::openConfig(), QStringLiteral("PreviewSettings"));
     m_enabledPlugins = globalConfig.readEntry("Plugins", KIO::PreviewJob::defaultPlugins());
-    m_localFileSizePreviewLimit = static_cast<qulonglong>(globalConfig.readEntry("MaximumSize", 0));
 
     connect(m_model, &KFileItemModel::itemsInserted, this, &KFileItemModelRolesUpdater::slotItemsInserted);
     connect(m_model, &KFileItemModel::itemsRemoved, this, &KFileItemModelRolesUpdater::slotItemsRemoved);
@@ -331,16 +329,6 @@ bool KFileItemModelRolesUpdater::isPaused() const
 QStringList KFileItemModelRolesUpdater::enabledPlugins() const
 {
     return m_enabledPlugins;
-}
-
-void KFileItemModelRolesUpdater::setLocalFileSizePreviewLimit(const qlonglong size)
-{
-    m_localFileSizePreviewLimit = size;
-}
-
-qlonglong KFileItemModelRolesUpdater::localFileSizePreviewLimit() const
-{
-    return m_localFileSizePreviewLimit;
 }
 
 void KFileItemModelRolesUpdater::setHoverSequenceState(const QUrl &itemUrl, int seqIdx)
@@ -577,6 +565,7 @@ void KFileItemModelRolesUpdater::slotGotPreview(const KFileItem &item, const QPi
     connect(m_model, &KFileItemModel::itemsChanged, this, &KFileItemModelRolesUpdater::slotItemsChanged);
     Q_EMIT previewJobFinished(); // For unit testing
 
+    applyResolvedRoles(index, ResolveAll, item);
     m_finishedItems.insert(item);
 }
 
@@ -597,7 +586,7 @@ void KFileItemModelRolesUpdater::slotPreviewFailed(const KFileItem &item)
         m_model->setData(index, data);
         connect(m_model, &KFileItemModel::itemsChanged, this, &KFileItemModelRolesUpdater::slotItemsChanged);
 
-        applyResolvedRoles(index, ResolveAll);
+        applyResolvedRoles(index, ResolveAll, item);
         m_finishedItems.insert(item);
     }
 }
@@ -638,7 +627,9 @@ void KFileItemModelRolesUpdater::slotHoverSequenceGotPreview(const KFileItem &it
     }
     if (wap >= 0.0f) {
         data["hoverSequenceWraparoundPoint"] = wap;
+        disconnect(m_model, &KFileItemModel::itemsChanged, this, &KFileItemModelRolesUpdater::slotItemsChanged);
         m_model->setData(index, data);
+        connect(m_model, &KFileItemModel::itemsChanged, this, &KFileItemModelRolesUpdater::slotItemsChanged);
     }
 
     // For hover sequence previews we never load index 0, because that's just the regular preview
@@ -653,7 +644,9 @@ void KFileItemModelRolesUpdater::slotHoverSequenceGotPreview(const KFileItem &it
         pixmaps.append(scaledPixmap);
         data["hoverSequencePixmaps"] = QVariant::fromValue(pixmaps);
 
+        disconnect(m_model, &KFileItemModel::itemsMoved, this, &KFileItemModelRolesUpdater::slotItemsMoved);
         m_model->setData(index, data);
+        connect(m_model, &KFileItemModel::itemsChanged, this, &KFileItemModelRolesUpdater::slotItemsChanged);
 
         const auto loadedIt = std::find(m_hoverSequenceLoadedItems.begin(), m_hoverSequenceLoadedItems.end(), item);
         if (loadedIt == m_hoverSequenceLoadedItems.end()) {
@@ -977,37 +970,13 @@ void KFileItemModelRolesUpdater::startPreviewJob()
         return;
     }
 
-    // KIO::filePreview() will request the MIME-type of all passed items, which (in the
-    // worst case) might block the application for several seconds. To prevent such
-    // a blocking, we only pass items with known mime type to the preview job.
-    const int count = m_pendingPreviewItems.count();
-    KFileItemList itemSubSet;
-    itemSubSet.reserve(count);
+    const KFileItemList items = m_pendingPreviewItems;
+    m_pendingPreviewItems.clear();
 
-    if (m_pendingPreviewItems.first().isMimeTypeKnown()) {
-        // Some mime types are known already, probably because they were
-        // determined when loading the icons for the visible items. Start
-        // a preview job for all items at the beginning of the list which
-        // have a known mime type.
-        do {
-            itemSubSet.append(m_pendingPreviewItems.takeFirst());
-        } while (!m_pendingPreviewItems.isEmpty() && m_pendingPreviewItems.first().isMimeTypeKnown());
-    } else {
-        // Determine mime types for MaxBlockTimeout ms, and start a preview
-        // job for the corresponding items.
-        QElapsedTimer timer;
-        timer.start();
+    const KFileItem &referenceItem = items.first();
 
-        do {
-            const KFileItem item = m_pendingPreviewItems.takeFirst();
-            item.determineMimeType();
-            itemSubSet.append(item);
-        } while (!m_pendingPreviewItems.isEmpty() && timer.elapsed() < MaxBlockTimeout);
-    }
-
-    KIO::PreviewJob *job = new KIO::PreviewJob(itemSubSet, cacheSize(), &m_enabledPlugins);
+    KIO::PreviewJob *job = new KIO::PreviewJob(items, cacheSize(), &m_enabledPlugins);
     job->setDevicePixelRatio(m_devicePixelRatio);
-    job->setIgnoreMaximumSize(itemSubSet.first().isLocalFile() && !itemSubSet.first().isSlow() && m_localFileSizePreviewLimit <= 0);
     if (job->uiDelegate()) {
         KJobWidgets::setWindow(job, qApp->activeWindow());
     }
@@ -1092,7 +1061,9 @@ void KFileItemModelRolesUpdater::loadNextHoverSequencePreview()
     if (!data.contains("hoverSequencePixmaps")) {
         // The pixmap at index 0 isn't used ("iconPixmap" will be used instead)
         data.insert("hoverSequencePixmaps", QVariant::fromValue(QVector<QPixmap>() << QPixmap()));
+        disconnect(m_model, &KFileItemModel::itemsChanged, this, &KFileItemModelRolesUpdater::slotItemsChanged);
         m_model->setData(index, data);
+        connect(m_model, &KFileItemModel::itemsChanged, this, &KFileItemModelRolesUpdater::slotItemsChanged);
     }
 
     const QVector<QPixmap> pixmaps = data["hoverSequencePixmaps"].value<QVector<QPixmap>>();
@@ -1116,7 +1087,6 @@ void KFileItemModelRolesUpdater::loadNextHoverSequencePreview()
     KIO::PreviewJob *job = new KIO::PreviewJob({m_hoverSequenceItem}, cacheSize(), &m_enabledPlugins);
 
     job->setSequenceIndex(loadSeqIdx);
-    job->setIgnoreMaximumSize(m_hoverSequenceItem.isLocalFile() && !m_hoverSequenceItem.isSlow() && m_localFileSizePreviewLimit <= 0);
     if (job->uiDelegate()) {
         KJobWidgets::setWindow(job, qApp->activeWindow());
     }
@@ -1245,13 +1215,13 @@ void KFileItemModelRolesUpdater::applySortProgressToModel()
     m_model->emitSortProgress(resolvedCount);
 }
 
-bool KFileItemModelRolesUpdater::applyResolvedRoles(int index, ResolveHint hint)
+bool KFileItemModelRolesUpdater::applyResolvedRoles(int index, ResolveHint hint, const KFileItem &referenceItem)
 {
-    const KFileItem item = m_model->fileItem(index);
+    const KFileItem item = !referenceItem.isNull() && referenceItem.isMimeTypeKnown() ? referenceItem : m_model->fileItem(index);
     const bool resolveAll = (hint == ResolveAll);
 
     bool iconChanged = false;
-    if (!item.isMimeTypeKnown() || !item.isFinalIconKnown()) {
+    if (resolveAll && (!item.isMimeTypeKnown() || !item.isFinalIconKnown())) {
         item.determineMimeType();
         iconChanged = true;
     } else if (!m_model->data(index).contains("iconName")) {
@@ -1549,7 +1519,7 @@ void KFileItemModelRolesUpdater::resetSizeData(const int index, const int size)
     connect(m_model, &KFileItemModel::itemsChanged, this, &KFileItemModelRolesUpdater::slotItemsChanged);
 }
 
-void KFileItemModelRolesUpdater::recountDirectoryItems(const QList<QUrl> directories)
+void KFileItemModelRolesUpdater::recountDirectoryItems(const QList<QUrl> &directories)
 {
     for (const auto &dir : directories) {
         auto index = m_model->index(dir);

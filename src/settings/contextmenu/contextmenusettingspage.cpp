@@ -39,8 +39,6 @@ const bool ShowDeleteDefault = false;
 const char VersionControlServicePrefix[] = "_version_control_";
 const char DeleteService[] = "_delete";
 const char CopyToMoveToService[] = "_copy_to_move_to";
-
-bool laterSelected = false;
 }
 
 ContextMenuSettingsPage::ContextMenuSettingsPage(QWidget *parent, const KActionCollection *actions, const QStringList &actionIds)
@@ -100,9 +98,7 @@ ContextMenuSettingsPage::ContextMenuSettingsPage(QWidget *parent, const KActionC
     std::sort(m_enabledVcsPlugins.begin(), m_enabledVcsPlugins.end());
 }
 
-ContextMenuSettingsPage::~ContextMenuSettingsPage()
-{
-}
+ContextMenuSettingsPage::~ContextMenuSettingsPage() = default;
 
 bool ContextMenuSettingsPage::entryVisible(const QString &id)
 {
@@ -145,7 +141,8 @@ void ContextMenuSettingsPage::setEntryVisible(const QString &id, bool visible)
     } else if (id == "open_in_new_window") {
         ContextMenuSettings::setShowOpenInNewWindow(visible);
     } else if (id == "open_in_split_view") {
-        return ContextMenuSettings::setShowOpenInSplitView(visible);
+        ContextMenuSettings::setShowOpenInSplitView(visible);
+        return;
     } else if (id == "copy_location") {
         ContextMenuSettings::setShowCopyLocation(visible);
     } else if (id == "duplicate") {
@@ -200,23 +197,6 @@ void ContextMenuSettingsPage::applySettings()
     if (m_enabledVcsPlugins != enabledPlugins) {
         VersionControlSettings::setEnabledPlugins(enabledPlugins);
         VersionControlSettings::self()->save();
-
-        if (!laterSelected) {
-            KMessageBox::ButtonCode promptRestart =
-                KMessageBox::questionTwoActions(window(),
-                                                i18nc("@info",
-                                                      "Dolphin must be restarted to apply the "
-                                                      "updated version control system settings."),
-                                                i18nc("@info", "Restart now?"),
-                                                KGuiItem(QApplication::translate("KStandardGuiItem", "&Restart"), QStringLiteral("dialog-restart")),
-                                                KGuiItem(QApplication::translate("KStandardGuiItem", "&Later"), QStringLiteral("dialog-later")));
-            if (promptRestart == KMessageBox::ButtonCode::PrimaryAction) {
-                Dolphin::openNewWindow();
-                qApp->quit();
-            } else {
-                laterSelected = true;
-            }
-        }
     }
 }
 

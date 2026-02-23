@@ -14,6 +14,7 @@
 #include "dolphintabwidget.h"
 #include "selectionmode/bottombar.h"
 #include <KActionMenu>
+#include <KConfigWatcher>
 #include <KFileItemActions>
 #include <kio/fileundomanager.h>
 #include <kxmlguiwindow.h>
@@ -30,7 +31,7 @@
 #include <QUrl>
 #include <QVector>
 
-typedef KIO::FileUndoManager::CommandType CommandType;
+using CommandType = KIO::FileUndoManager::CommandType;
 
 class DiskSpaceUsageMenu;
 class DolphinBookmarkHandler;
@@ -48,6 +49,7 @@ class KToolBarPopupAction;
 class QToolButton;
 class PlacesPanel;
 class TerminalPanel;
+class ServiceMenuShortcutManager;
 
 /** Used to identify that a custom command should be triggered on a view background double-click.*/
 constexpr QLatin1String customCommand{"CUSTOM_COMMAND"};
@@ -226,6 +228,9 @@ public Q_SLOTS:
 
     /** @see GeneralSettings::splitViewChanged() */
     void slotSplitViewChanged();
+
+    /** @see GeneralSettings::tabBarChanged() */
+    void slotTabBarChanged();
 
 Q_SIGNALS:
     /**
@@ -694,6 +699,11 @@ private:
      */
     void setupDockWidgets();
 
+    /**
+     * Initializes or re-initializes the KFileItemActions instance.
+     */
+    void setupFileItemActions();
+
     void updateFileAndEditActions();
     void updateViewActions();
     void updateGoActions();
@@ -790,7 +800,9 @@ private:
     DiskSpaceUsageMenu *m_diskSpaceUsageMenu;
 
     QMenu m_searchTools;
-    KFileItemActions m_fileItemActions;
+    KConfigWatcher::Ptr m_serviceMenuConfigWatcher;
+    KFileItemActions *m_fileItemActions = nullptr;
+    ServiceMenuShortcutManager *m_serviceMenuShortcutManager = nullptr;
 
     QTimer *m_sessionSaveTimer;
     QFutureWatcher<void> *m_sessionSaveWatcher;
